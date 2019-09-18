@@ -1,0 +1,134 @@
+#!/usr/bin/env lua5.3
+local WINDOW_CLASS, WINDOW_NAME="kikuake", "kikuake"
+local OPACITY, HEIGHT_PERCENT=0.75, 50
+local SOCKET="/tmp/kikuake-"..os.getenv 'USER'
+local SHELL=os.getenv 'SHELL' or "bash"
+
+local start, isalive, isvisible, control
+
+function start()
+	local tab={'kitty'}
+	table.insert(tab, '--class') table.insert(tab, WINDOW_CLASS)
+	table.insert(tab, '--name') table.insert(tab, WINDOW_NAME)
+	table.insert(tab, '-o') table.insert(tab, "background_opacity="..OPACITY)
+	table.insert(tab, '-o') table.insert(tab, "dynamic_background_opacity=yes")
+	table.insert(tab, '-o') table.insert(tab, "allow_remote_control=yes")
+	table.insert(tab, '--listen-on') table.insert(tab, "unix:"..SOCKET)
+	table.insert(tab, '--detach')
+	table.insert(tab, SHELL)
+	
+	local commandline=table.concat(tab, ' ')
+	os.execute(commandline)
+	while not (isalive() and isvisible()) do
+		os.execute("sleep 0.1s")
+	end
+	os.execute("wmctrl -x -r "..WINDOW_NAME.."."..WINDOW_CLASS.." -b remove,maximized_vert,maximized_horz")
+	while isvisible() do
+		os.execute("xdotool search --class "..WINDOW_CLASS.." windowunmap >/dev/null 2>&1")
+	end
+	print("Started kikuake")
+end
+
+function isalive()
+	local retval=os.execute("test -S "..SOCKET)
+	return retval==true or retval==0
+end
+
+function isvisible()
+	local hidden=true
+	local fd=io.popen("wmctrl -lx", 'r')
+	for line in fd:lines() do
+		if line:match("^0x.+%s+%d+%s+"..WINDOW_NAME.."."..WINDOW_CLASS) then
+			fd:close()
+			return true
+		end
+	end
+	fd:close()
+	return false
+end
+
+function control(fn, ...)
+	local variables={}
+	
+	local function getcurrentdesktop()
+		local fd=io.popen("wmctrl -d", 'r')
+		for line in fd:lines() do
+			local id, flag, width, height=line:match("^(%d+)%s+([-*])%s+DG:%s(%d+)x(%d+)")
+			if flag=='*' then
+				variables.desktopw, variables.desktoph, variables.desktopid=tonumber(width), tonumber(height), tonumber(id)
+				break
+			end
+		end
+		fd:close()
+	end
+	
+	local functions={}
+	
+	do
+		function functions.show()
+			getcurrentdesktop()
+			
+			-- unhide the image and put it on the correct desktop
+			os.execute("xdotool search --class "..WINDOW_CLASS.." windowunmap windowmap --sync")
+			os.execute("wmctrl -x -r "..WINDOW_NAME.."."..WINDOW_CLASS.." -t "..variables.desktopid.." -b add,above")
+			
+			if HEIGHT_PERCENT==100 then
+				-- fullscreen it
+				os.execute("wmctrl -x -r "..WINDOW_NAME.."."..WINDOW_CLASS.." -b add,fullscreen")
+			else
+				-- unfullscreen it and set it to the right size
+				os.execute("wmctrl -x -r "..WINDOW_NAME.."."..WINDOW_CLASS.." -b remove,fullscreen")
+				os.execute("wmctrl -x -r "..WINDOW_NAME.."."..WINDOW_CLASS.." -b remove,maximized_vert")
+				os.execute("xdotool search --class "..WINDOW_CLASS.." windowmove 0 0 windowsize "..variables.desktopw.." "..math.floor(variables.desktoph*HEIGHT_PERCENT/100))
+			end
+		end
+		function functions.hide()
+			os.execute("xdotool search --class "..WINDOW_CLASS.." windowunmap")
+		end
+		function functions.toggle()
+			if isvisible() then
+				functions.hide()
+			else
+				functions.show()
+			end
+		end
+		function functions.togglefullscreen()
+			HEIGHT_PERCENT=100
+			if isvisible() then
+				functions.hide()
+			else
+				functions.show()
+			end
+		end
+		
+		function functions.setopacity(opacity)
+			opacity=tonumber(opacity) or error("Invalid opacity: "..opacity)
+			if opacity<0.1 or opacity>1 then
+				error("Invalid opacity: "..opacity)
+			end
+			os.execute("kitty @ --to unix:"..SOCKET.." set-background-opacity "..opacity)
+		end
+	end
+	
+	functions[fn](...)
+end
+
+if arg[1]=='--start' then
+	if isalive() then
+		print("Already running")
+	else
+		start()
+	end
+elseif arg[1]=='--control' then
+	if not isalive() then
+		start()
+	end
+		control(table.unpack(arg, 2))
+elseif arg[1]:match("^%-%-") then
+	if not isalive() then
+		start()
+	end
+		control(arg[1]:sub(3), table.unpack(arg, 2))
+else
+	io.stderr:write "Invalid command\n"
+end

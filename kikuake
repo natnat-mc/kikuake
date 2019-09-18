@@ -1,36 +1,77 @@
 #!/usr/bin/env lua5.3
-local WINDOW_CLASS, WINDOW_NAME="kikuake", "kikuake"
-local OPACITY, HEIGHT_PERCENT=0.75, 50
-local SOCKET="/tmp/kikuake-"..os.getenv 'USER'
-local SHELL=os.getenv 'SHELL' or "bash"
+local config={}
+config.WINDOW_CLASS, config.WINDOW_NAME="kikuake", "kikuake"
+config.OPACITY, config.HEIGHT_PERCENT=0.75, 50
+config.SOCKET="/tmp/kikuake-"..os.getenv 'USER'
+config.SHELL=os.getenv 'SHELL' or "bash"
+
+local function convertval(v)
+	if v=='true' then
+		return true
+	elseif v=='false' then
+		return false
+	else
+		return tonumber(v) or v
+	end
+end
+local function saveconfig()
+	local fp=os.getenv 'HOME'.."/.config/kikuake"
+	local fd=io.open(fp, 'w')
+	for k, v in pairs(config) do
+		fd:write(k)
+		fd:write ':'
+		fd:write(v)
+		fd:write '\n'
+	end
+	fd:close()
+end
+
+(function()
+	local fp=os.getenv 'HOME'.."/.config/kikuake"
+	local fd=io.open(fp, 'r')
+	if not fd then
+		saveconfig()
+		fd=io.open(fp, 'r')
+	end
+	if not fd then
+		print("Unable to load config file at "..fp)
+		return false
+	end
+	for line in fd:lines() do
+		if #line~=0 and line:sub(1, 1)~='#' then
+			local k, v=line:match("^(.+):(.+)$")
+			config[k]=convertval(v)
+		end
+	end
+end)()
 
 local start, isalive, isvisible, control
 
 function start()
 	local tab={'kitty'}
-	table.insert(tab, '--class') table.insert(tab, WINDOW_CLASS)
-	table.insert(tab, '--name') table.insert(tab, WINDOW_NAME)
-	table.insert(tab, '-o') table.insert(tab, "background_opacity="..OPACITY)
+	table.insert(tab, '--class') table.insert(tab, config.WINDOW_CLASS)
+	table.insert(tab, '--name') table.insert(tab, config.WINDOW_NAME)
+	table.insert(tab, '-o') table.insert(tab, "background_opacity="..config.OPACITY)
 	table.insert(tab, '-o') table.insert(tab, "dynamic_background_opacity=yes")
 	table.insert(tab, '-o') table.insert(tab, "allow_remote_control=yes")
-	table.insert(tab, '--listen-on') table.insert(tab, "unix:"..SOCKET)
+	table.insert(tab, '--listen-on') table.insert(tab, "unix:"..config.SOCKET)
 	table.insert(tab, '--detach')
-	table.insert(tab, SHELL)
+	table.insert(tab, config.SHELL)
 	
 	local commandline=table.concat(tab, ' ')
 	os.execute(commandline)
 	while not (isalive() and isvisible()) do
 		os.execute("sleep 0.1s")
 	end
-	os.execute("wmctrl -x -r "..WINDOW_NAME.."."..WINDOW_CLASS.." -b remove,maximized_vert,maximized_horz")
+	os.execute("wmctrl -x -r "..config.WINDOW_NAME.."."..config.WINDOW_CLASS.." -b remove,maximized_vert")
 	while isvisible() do
-		os.execute("xdotool search --class "..WINDOW_CLASS.." windowunmap >/dev/null 2>&1")
+		os.execute("xdotool search --class "..config.WINDOW_CLASS.." windowunmap >/dev/null 2>&1")
 	end
 	print("Started kikuake")
 end
 
 function isalive()
-	local retval=os.execute("test -S "..SOCKET)
+	local retval=os.execute("test -S "..config.SOCKET)
 	return retval==true or retval==0
 end
 
@@ -38,7 +79,7 @@ function isvisible()
 	local hidden=true
 	local fd=io.popen("wmctrl -lx", 'r')
 	for line in fd:lines() do
-		if line:match("^0x.+%s+%d+%s+"..WINDOW_NAME.."."..WINDOW_CLASS) then
+		if line:match("^0x.+%s+%d+%s+"..config.WINDOW_NAME.."."..config.WINDOW_CLASS) then
 			fd:close()
 			return true
 		end
@@ -69,21 +110,21 @@ function control(fn, ...)
 			getcurrentdesktop()
 			
 			-- unhide the image and put it on the correct desktop
-			os.execute("xdotool search --class "..WINDOW_CLASS.." windowunmap windowmap --sync")
-			os.execute("wmctrl -x -r "..WINDOW_NAME.."."..WINDOW_CLASS.." -t "..variables.desktopid.." -b add,above")
+			os.execute("xdotool search --class "..config.WINDOW_CLASS.." windowunmap windowmap --sync")
+			os.execute("wmctrl -x -r "..config.WINDOW_NAME.."."..config.WINDOW_CLASS.." -t "..variables.desktopid.." -b add,above,maximized_horz")
 			
 			if HEIGHT_PERCENT==100 then
 				-- fullscreen it
-				os.execute("wmctrl -x -r "..WINDOW_NAME.."."..WINDOW_CLASS.." -b add,fullscreen")
+				os.execute("wmctrl -x -r "..config.WINDOW_NAME.."."..config.WINDOW_CLASS.." -b add,fullscreen")
 			else
 				-- unfullscreen it and set it to the right size
-				os.execute("wmctrl -x -r "..WINDOW_NAME.."."..WINDOW_CLASS.." -b remove,fullscreen")
-				os.execute("wmctrl -x -r "..WINDOW_NAME.."."..WINDOW_CLASS.." -b remove,maximized_vert")
-				os.execute("xdotool search --class "..WINDOW_CLASS.." windowmove 0 0 windowsize "..variables.desktopw.." "..math.floor(variables.desktoph*HEIGHT_PERCENT/100))
+				os.execute("wmctrl -x -r "..config.WINDOW_NAME.."."..config.WINDOW_CLASS.." -b remove,fullscreen")
+				os.execute("wmctrl -x -r "..config.WINDOW_NAME.."."..config.WINDOW_CLASS.." -b remove,maximized_vert")
+				os.execute("xdotool search --class "..config.WINDOW_CLASS.." windowmove 0 0 windowsize "..variables.desktopw.." "..math.floor(variables.desktoph*config.HEIGHT_PERCENT/100))
 			end
 		end
 		function functions.hide()
-			os.execute("xdotool search --class "..WINDOW_CLASS.." windowunmap")
+			os.execute("xdotool search --class "..config.WINDOW_CLASS.." windowunmap")
 		end
 		function functions.toggle()
 			if isvisible() then
@@ -106,7 +147,26 @@ function control(fn, ...)
 			if opacity<0.1 or opacity>1 then
 				error("Invalid opacity: "..opacity)
 			end
-			os.execute("kitty @ --to unix:"..SOCKET.." set-background-opacity "..opacity)
+			os.execute("kitty @ --to unix:"..config.SOCKET.." set-background-opacity "..opacity)
+		end
+
+		function functions.config(key, val)
+			if key then
+				key=key:upper()
+				if val then
+					if config[key]==nil then
+						print("Unknown config key "..key)
+						return
+					end
+					config[key]=convertval(val)
+					saveconfig()
+				end
+				print(config[key])
+			else
+				for k, v in pairs(config) do
+					print(k..':'..v)
+				end
+			end
 		end
 	end
 	

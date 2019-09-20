@@ -113,15 +113,17 @@ function control(fn, ...)
 			os.execute("xdotool search --class "..config.WINDOW_CLASS.." windowunmap windowmap --sync")
 			os.execute("wmctrl -x -r "..config.WINDOW_NAME.."."..config.WINDOW_CLASS.." -t "..variables.desktopid.." -b add,above,maximized_horz")
 			
-			if HEIGHT_PERCENT==100 then
-				-- fullscreen it
-				os.execute("wmctrl -x -r "..config.WINDOW_NAME.."."..config.WINDOW_CLASS.." -b add,fullscreen")
-			else
-				-- unfullscreen it and set it to the right size
-				os.execute("wmctrl -x -r "..config.WINDOW_NAME.."."..config.WINDOW_CLASS.." -b remove,fullscreen")
-				os.execute("wmctrl -x -r "..config.WINDOW_NAME.."."..config.WINDOW_CLASS.." -b remove,maximized_vert")
-				os.execute("xdotool search --class "..config.WINDOW_CLASS.." windowmove 0 0 windowsize "..variables.desktopw.." "..math.floor(variables.desktoph*config.HEIGHT_PERCENT/100))
-			end
+			-- unfullscreen it and set it to the right size
+			os.execute("wmctrl -x -r "..config.WINDOW_NAME.."."..config.WINDOW_CLASS.." -b remove,fullscreen")
+			os.execute("wmctrl -x -r "..config.WINDOW_NAME.."."..config.WINDOW_CLASS.." -b remove,maximized_vert")
+			os.execute("xdotool search --class "..config.WINDOW_CLASS.." windowmove 0 0 windowsize "..variables.desktopw.." "..math.floor(variables.desktoph*config.HEIGHT_PERCENT/100))
+		end
+		function functions.showfullscreen()
+			getcurrentdesktop()
+			
+			-- unhide the image and put it on the correct desktop in fullscreen mode
+			os.execute("xdotool search --class "..config.WINDOW_CLASS.." windowunmap windowmap --sync")
+			os.execute("wmctrl -x -r "..config.WINDOW_NAME.."."..config.WINDOW_CLASS.." -t "..variables.desktopid.." -b add,above,fullscreen")
 		end
 		function functions.hide()
 			os.execute("xdotool search --class "..config.WINDOW_CLASS.." windowunmap")
@@ -134,11 +136,10 @@ function control(fn, ...)
 			end
 		end
 		function functions.togglefullscreen()
-			HEIGHT_PERCENT=100
 			if isvisible() then
 				functions.hide()
 			else
-				functions.show()
+				functions.showfullscreen()
 			end
 		end
 		

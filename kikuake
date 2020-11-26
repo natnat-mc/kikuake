@@ -101,6 +101,24 @@ function control(fn, ...)
 			end
 		end
 		fd:close()
+
+		fd = io.popen "xdotool getmouselocation"
+		local mx, my = fd:read '*l':match "x:(%d+)%s+y:(%d+)"
+		mx, my = tonumber(mx), tonumber(my)
+		variables.mousex, variables.mousey = mx, my
+		fd:close()
+
+		fd = io.popen "xrandr"
+		for line in fd:lines() do
+			local sw, sh, sx, sy = line:match " connected.-(%d+)x(%d+)%+(%d+)%+(%d+)"
+			if sw then
+				sw, sh, sx, sy = tonumber(sw), tonumber(sh), tonumber(sx), tonumber(sy)
+				if mx>=sx and mx<sx+sw and my>=sy and my<sy+sh then
+					variables.screenw, variables.screenh, variables.screenx, variables.screeny = sw, sh, sx, sy
+				end
+			end
+		end
+		fd:close()
 	end
 	
 	local functions={}
@@ -116,7 +134,7 @@ function control(fn, ...)
 			-- unfullscreen it and set it to the right size
 			os.execute("wmctrl -x -r "..config.WINDOW_NAME.."."..config.WINDOW_CLASS.." -b remove,fullscreen")
 			os.execute("wmctrl -x -r "..config.WINDOW_NAME.."."..config.WINDOW_CLASS.." -b remove,maximized_vert")
-			os.execute("xdotool search --class "..config.WINDOW_CLASS.." windowmove 0 0 windowsize "..variables.desktopw.." "..math.floor(variables.desktoph*config.HEIGHT_PERCENT/100))
+			os.execute("xdotool search --class "..config.WINDOW_CLASS.." windowmove "..variables.screenx.." "..variables.screeny.." windowsize "..variables.screenw.." "..math.floor(variables.screenh*config.HEIGHT_PERCENT/100))
 		end
 		function functions.showfullscreen()
 			getcurrentdesktop()
@@ -184,12 +202,12 @@ elseif arg[1]=='--control' then
 	if not isalive() then
 		start()
 	end
-		control(table.unpack(arg, 2))
+	control(table.unpack(arg, 2))
 elseif arg[1]:match("^%-%-") then
 	if not isalive() then
 		start()
 	end
-		control(arg[1]:sub(3), table.unpack(arg, 2))
+	control(arg[1]:sub(3), table.unpack(arg, 2))
 else
 	io.stderr:write "Invalid command\n"
 end
